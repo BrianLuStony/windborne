@@ -7,6 +7,7 @@ import {
   Popup,
   CircleMarker,
 } from "react-leaflet";
+import { defaultIcon } from "./leaflet.setup";
 
 function App() {
   const [data, setData] = useState<any>();
@@ -94,7 +95,7 @@ function App() {
             return (
               <div key={b.id}>
                 <Polyline positions={trail} />
-                <Marker position={last}>
+                <Marker position={last} icon={defaultIcon}>
                   <Popup>
                     <div style={{ fontSize: 12 }}>
                       <b>{b.id}</b>
