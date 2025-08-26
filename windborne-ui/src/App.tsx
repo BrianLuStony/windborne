@@ -67,12 +67,6 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Determine if meteo/tailwind is enabled (backend may send snake_case or camelCase)
-  const meteoEnabled =
-    data?.info?.meteo_enabled ??
-    data?.info?.meteoEnabled ??
-    (data?.insights?.bestTail?.length ?? 0) > 0;
-
   return (
     <div
       style={{
@@ -170,76 +164,6 @@ function App() {
           <div style={{ margin: "8px 0" }}>
             Fetching latest data… this may take a few seconds.
           </div>
-        )}
-
-        {data && (
-          <>
-            <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-              <div>
-                Last update: {new Date(data.updatedAt).toLocaleString()} ·
-                &nbsp;Balloons: {data.count}
-              </div>
-              <span
-                title={
-                  meteoEnabled
-                    ? "Meteo enrichment enabled"
-                    : "Tailwind insights disabled for this demo"
-                }
-                style={{
-                  padding: "2px 6px",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  background: meteoEnabled ? "#e6ffed" : "#f5f5f5",
-                  border: `1px solid ${meteoEnabled ? "#b7eb8f" : "#ddd"}`,
-                  color: "#333",
-                  marginLeft: 6,
-                }}
-              >
-                Meteo: {meteoEnabled ? "on" : "off"}
-              </span>
-            </div>
-
-            <section>
-              <h3>Fastest</h3>
-              <ul>
-                {(data.insights.fastest ?? []).map((b) => (
-                  <li key={b.id}>
-                    {b.id}: {b.drift.speedKmh.toFixed(1)} km/h
-                  </li>
-                ))}
-                {(!data.insights.fastest ||
-                  data.insights.fastest.length === 0) && <li>—</li>}
-              </ul>
-            </section>
-
-            {/* Only show Best Tailwind if meteo is on */}
-            {meteoEnabled && (
-              <section>
-                <h3>Best Tailwind</h3>
-                <ul>
-                  {(data.insights.bestTail ?? []).map((b) => (
-                    <li key={b.id}>
-                      {b.id}: tail {b.comp!.tailwind.toFixed(1)} km/h, Δ{" "}
-                      {b.comp!.deltaDeg.toFixed(0)}°
-                    </li>
-                  ))}
-                  {(!data.insights.bestTail ||
-                    data.insights.bestTail.length === 0) && (
-                    <li>Tailwind insights will appear shortly.</li>
-                  )}
-                </ul>
-              </section>
-            )}
-
-            {/* If meteo is off, give a tiny hint how to enable for reviewers */}
-            {!meteoEnabled && (
-              <small style={{ opacity: 0.7 }}>
-                Tailwind insights disabled for this demo. Append{" "}
-                <code>?no_meteo=0</code> to the API URL and redeploy with meteo
-                enabled to see them.
-              </small>
-            )}
-          </>
         )}
       </aside>
     </div>
