@@ -27,7 +27,8 @@ function App() {
     try {
       const base = import.meta.env.VITE_API_BASE || "http://localhost:4000";
       // Add ?debug=1 if you enabled the debug meta on the Rails endpoint
-      const url = `${base}/api/constellation`;
+      const q = import.meta.env.VITE_API_QUERY || "";
+      const url = `${base}/api/constellation${q}`;
       const res = await fetch(url, { cache: "no-store" });
 
       if (!res.ok) {
