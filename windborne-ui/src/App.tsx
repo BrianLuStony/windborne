@@ -81,7 +81,7 @@ function App() {
           {/* Quick visual fallback: draw a few points even if markers had issues before */}
           {(data?.balloons ?? [])
             .slice(0, 3)
-            .flatMap((b: any, bi: number) =>
+            .flatMap((b: any) =>
               (b.trail ?? [])
                 .slice(0, 50)
                 .map((p: any, i: number) => (
