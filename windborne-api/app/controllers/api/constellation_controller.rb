@@ -1,6 +1,7 @@
 # app/controllers/api/constellation_controller.rb
 class Api::ConstellationController < ActionController::API
   def index
+    # ---------- params ----------
     debug     = ActiveModel::Type::Boolean.new.cast(params[:debug])
     no_meteo  = ActiveModel::Type::Boolean.new.cast(params[:no_meteo])
     meteo_cap = (params[:meteo_cap].presence || 40).to_i
@@ -8,8 +9,9 @@ class Api::ConstellationController < ActionController::API
     max_rows  = params[:max_rows_per_hour].presence&.to_i
     max_rows  = nil if max_rows && max_rows <= 0
 
+    # ---------- caching ----------
     cache_key = [
-      "constellation:v6",
+      "constellation:v7",
       "no_meteo=#{no_meteo}",
       "meteo_cap=#{meteo_cap}",
       "max_rows=#{max_rows || 'nil'}"
@@ -25,6 +27,7 @@ class Api::ConstellationController < ActionController::API
       build_payload(no_meteo: no_meteo, meteo_cap: meteo_cap, max_rows: max_rows, debug: false)
     end
 
+    # public cache for browsers
     response.set_header "Cache-Control", "public, max-age=60"
     render json: payload
   end
@@ -41,7 +44,9 @@ class Api::ConstellationController < ActionController::API
 
     # Base list for ALL tracks (map & "Fastest")
     base = tracks.map do |tr|
-      last  = tr[:points].last
+      pts = tr[:points] || []
+      next if pts.empty?
+      last  = pts.last
       drift = VectorMath.drift(tr) # {speedKmh:, headingDeg:}
       {
         id:    tr[:id],
@@ -49,27 +54,38 @@ class Api::ConstellationController < ActionController::API
         drift: drift,
         meteo: nil,
         comp:  nil,
-        trail: tr[:points].map { |p| { lat: p[:lat], lon: p[:lon], t: p[:t] } }
+        trail: pts.map { |p| { lat: p[:lat], lon: p[:lon], t: p[:t] } }
       }
-    end
+    end.compact
 
     # Enrich a sorted subset with winds
-    enriched_map = {}
-    subset = []
+    enriched_map   = {}
+    subset         = []
     meteo_attempts = 0
     meteo_success  = 0
     meteo_errors   = []
+    meteo_probes   = []   # diagnostics (first few only) when debug=1
 
     unless no_meteo || meteo_cap <= 0 || base.empty?
       sorted = base.sort_by { |e| -(e.dig(:drift, :speedKmh) || 0.0) } # fastest first
       subset = sorted.first(meteo_cap)
 
-      subset.each do |e|
+      subset.each_with_index do |e, i|
         meteo_attempts += 1
+        last  = e[:last]
+        drift = e[:drift]
         begin
-          last  = e[:last]
-          drift = e[:drift]
-          m = OpenMeteoClient.at(last[:lat], last[:lon], Time.at(last[:t] / 1000))
+          if debug && i < 3
+            # Run with diagnostics for the first few probes
+            m, dbg = OpenMeteoClient.fetch(last[:lat], last[:lon], Time.at(last[:t] / 1000), want_debug: true)
+            meteo_probes << {
+              id: e[:id], lat: last[:lat], lon: last[:lon], t: last[:t],
+              debug: dbg
+            }
+          else
+            m = OpenMeteoClient.at(last[:lat], last[:lon], Time.at(last[:t] / 1000))
+          end
+
           if m
             c = VectorMath.components(drift[:headingDeg], m[:winddirection], m[:windspeed])
             enriched_map[e[:id]] = { meteo: m, comp: c }
@@ -80,16 +96,18 @@ class Api::ConstellationController < ActionController::API
         rescue => ex
           meteo_errors << "#{ex.class}: #{ex.message}"
         end
-        meteo_errors.uniq!
-        meteo_errors = meteo_errors.first(5)
       end
+
+      meteo_errors.uniq!
+      meteo_errors = meteo_errors.first(5)
     end
 
     # Merge enrichment back into ALL base entries
     balloons = base.map { |e| (extra = enriched_map[e[:id]]) ? e.merge(extra) : e }
     t3 = mono
 
-    fastest   = balloons.sort_by { |e| -(e.dig(:drift, :speedKmh) || 0.0) }.first(5)
+    # Insights
+    fastest   = balloons.sort_by { |e| -(e.dig(:drift, :speedKmh) || 0.0) }.first(5) || []
     best_tail = balloons.select { |e| e[:comp].is_a?(Hash) }
                         .sort_by { |e| -(e.dig(:comp, :tailwind) || 0.0) }
                         .first(5) || []
@@ -99,8 +117,8 @@ class Api::ConstellationController < ActionController::API
       count: balloons.size,
       balloons: balloons,
       insights: {
-        fastest: fastest || [],
-        bestTail: best_tail || []
+        fastest: fastest,
+        bestTail: best_tail
       }
     }
 
@@ -113,7 +131,8 @@ class Api::ConstellationController < ActionController::API
           meteo: {
             attempts: meteo_attempts,
             success:  meteo_success,
-            errors_sample: meteo_errors
+            errors_sample: meteo_errors,
+            probes: meteo_probes
           },
           timings_ms: {
             fetch:  ((t1 - t0) * 1000).to_i,
