@@ -67,12 +67,6 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Determine if meteo/tailwind is enabled (backend may send snake_case or camelCase)
-  const meteoEnabled =
-    data?.info?.meteo_enabled ??
-    data?.info?.meteoEnabled ??
-    (data?.insights?.bestTail?.length ?? 0) > 0;
-
   return (
     <div
       style={{
