@@ -4,11 +4,17 @@ import "./index.css";
 import App from "./App.tsx";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import iconUrl from "leaflet/dist/images/marker-icon.png";
-import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
-import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 
-L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
+// Force Vite to emit proper asset URLs
+import marker2x from "leaflet/dist/images/marker-icon-2x.png?url";
+import marker from "leaflet/dist/images/marker-icon.png?url";
+import shadow from "leaflet/dist/images/marker-shadow.png?url";
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: marker2x,
+  iconUrl: marker,
+  shadowUrl: shadow,
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
