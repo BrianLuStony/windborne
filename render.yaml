@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: windborne-api
+    env: ruby
+    rootDir: windborne-api
+    plan: free
+    buildCommand: bundle install
+    startCommand: bundle exec puma -C config/puma.rb
+    healthCheckPath: /api/constellation?no_meteo=1
+    envVars:
+      - key: RAILS_ENV
+        value: production
+      - key: RACK_ENV
+        value: production
+      - key: RAILS_LOG_TO_STDOUT
+        value: "true"
+      - key: RAILS_SERVE_STATIC_FILES
+        value: "true"
+      - key: BUNDLE_WITHOUT
+        value: "development:test"
+      - key: CORS_ORIGINS # set this to your Vercel domain after UI deploy
+        value: "*"
