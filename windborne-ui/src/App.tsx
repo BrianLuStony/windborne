@@ -38,7 +38,7 @@ function App() {
 
   const center = useMemo<[number, number]>(() => [20, 0], []);
 
-  const base = import.meta.env.VITE_API_BASE;
+  const base = "";
   const q = import.meta.env.VITE_API_QUERY || "";
   const url = `${base}/api/constellation${q}`;
 
