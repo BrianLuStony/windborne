@@ -7,6 +7,13 @@ import {
   Popup,
 } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import iconUrl from "leaflet/dist/images/marker-icon.png";
+import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
+import shadowUrl from "leaflet/dist/images/marker-shadow.png";
+
+L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
 
 type Balloon = any; // keep loose for now
 
