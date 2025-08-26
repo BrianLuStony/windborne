@@ -10,6 +10,7 @@
 # end
 # config/routes.rb
 Rails.application.routes.draw do
+  get "/healthz", to: proc { [200, { "Content-Type" => "text/plain" }, ["ok"]] }
   namespace :api, defaults: { format: :json } do
     get "constellation", to: "constellation#index"
   end

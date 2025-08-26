@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: bundle install
     startCommand: bundle exec puma -C config/puma.rb
-    healthCheckPath: /api/constellation?no_meteo=1
+    healthCheckPath: /healthz
     envVars:
       - key: RAILS_ENV
         value: production
