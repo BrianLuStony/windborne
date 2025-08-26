@@ -41,7 +41,7 @@ function App() {
   const base = "";
   const q = import.meta.env.VITE_API_QUERY || "";
   const url = `${base}/api/constellation${q}`;
-
+  console.log(url);
   async function load() {
     try {
       if (!firstLoadDone.current) setLoading(true);
