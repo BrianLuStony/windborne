@@ -193,25 +193,6 @@ function App() {
                   data.insights.fastest.length === 0) && <li>—</li>}
               </ul>
             </section>
-
-            {/* Only show Best Tailwind if meteo is on */}
-            {meteoEnabled && (
-              <section>
-                <h3>Best Tailwind</h3>
-                <ul>
-                  {(data.insights.bestTail ?? []).map((b) => (
-                    <li key={b.id}>
-                      {b.id}: tail {b.comp!.tailwind.toFixed(1)} km/h, Δ{" "}
-                      {b.comp!.deltaDeg.toFixed(0)}°
-                    </li>
-                  ))}
-                  {(!data.insights.bestTail ||
-                    data.insights.bestTail.length === 0) && (
-                    <li>Tailwind insights will appear shortly.</li>
-                  )}
-                </ul>
-              </section>
-            )}
           </>
         )}
       </aside>
