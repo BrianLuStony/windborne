@@ -66,6 +66,11 @@ Rails.application.configure do
   #   authentication: :plain
   # }
 
+  # Disable Solid Cache and use an in-memory cache in production
+  config.solid_cache.enabled = false
+  config.action_controller.perform_caching = true
+  config.cache_store = :memory_store, { size: 64.megabytes }
+
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
   # the I18n.default_locale when a translation cannot be found).
   config.i18n.fallbacks = true
