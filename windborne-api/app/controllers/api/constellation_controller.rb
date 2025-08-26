@@ -1,7 +1,6 @@
 # app/controllers/api/constellation_controller.rb
 class Api::ConstellationController < ActionController::API
   def index
-    # ---------- params ----------
     debug     = ActiveModel::Type::Boolean.new.cast(params[:debug])
     no_meteo  = ActiveModel::Type::Boolean.new.cast(params[:no_meteo])
     meteo_cap = (params[:meteo_cap].presence || 40).to_i
@@ -9,9 +8,6 @@ class Api::ConstellationController < ActionController::API
     max_rows  = params[:max_rows_per_hour].presence&.to_i
     max_rows  = nil if max_rows && max_rows <= 0
 
-    # ---------- cache ----------
-    # Include all behavior-affecting params in the cache key.
-    # Bypass cache when debug is on so you always see live debug fields.
     cache_key = [
       "constellation:v6",
       "no_meteo=#{no_meteo}",
@@ -29,7 +25,6 @@ class Api::ConstellationController < ActionController::API
       build_payload(no_meteo: no_meteo, meteo_cap: meteo_cap, max_rows: max_rows, debug: false)
     end
 
-    # public cache for browsers
     response.set_header "Cache-Control", "public, max-age=60"
     render json: payload
   end
@@ -44,7 +39,7 @@ class Api::ConstellationController < ActionController::API
     tracks = FastTrackBuilder.call(points) # [{ id:, points:[{lat,lon,t}, ...] }, ...]
     t2 = mono
 
-    # Base list for ALL tracks
+    # Base list for ALL tracks (map & "Fastest")
     base = tracks.map do |tr|
       last  = tr[:points].last
       drift = VectorMath.drift(tr) # {speedKmh:, headingDeg:}
@@ -58,7 +53,7 @@ class Api::ConstellationController < ActionController::API
       }
     end
 
-    # ---- Enrichment (subset) ----
+    # Enrich a sorted subset with winds
     enriched_map = {}
     subset = []
     meteo_attempts = 0
@@ -66,8 +61,7 @@ class Api::ConstellationController < ActionController::API
     meteo_errors   = []
 
     unless no_meteo || meteo_cap <= 0 || base.empty?
-      # enrich the most "interesting" first: fastest drift
-      sorted = base.sort_by { |e| -(e.dig(:drift, :speedKmh) || 0.0) }
+      sorted = base.sort_by { |e| -(e.dig(:drift, :speedKmh) || 0.0) } # fastest first
       subset = sorted.first(meteo_cap)
 
       subset.each do |e|
@@ -75,20 +69,19 @@ class Api::ConstellationController < ActionController::API
         begin
           last  = e[:last]
           drift = e[:drift]
-          # NOTE: OpenMeteoClient.at should return {windspeed:, winddirection:} or nil
-          meteo = OpenMeteoClient.at(last[:lat], last[:lon], Time.at(last[:t] / 1000))
-          if meteo
-            comp  = VectorMath.components(drift[:headingDeg], meteo[:winddirection], meteo[:windspeed])
-            enriched_map[e[:id]] = { meteo: meteo, comp: comp }
+          m = OpenMeteoClient.at(last[:lat], last[:lon], Time.at(last[:t] / 1000))
+          if m
+            c = VectorMath.components(drift[:headingDeg], m[:winddirection], m[:windspeed])
+            enriched_map[e[:id]] = { meteo: m, comp: c }
             meteo_success += 1
           else
-            meteo_errors << "nil response at #{last[:lat]},#{last[:lon]}"
+            meteo_errors << "nil meteo at #{last[:lat]},#{last[:lon]}"
           end
         rescue => ex
           meteo_errors << "#{ex.class}: #{ex.message}"
-          meteo_errors.uniq!
-          meteo_errors = meteo_errors.first(5) # cap noise
         end
+        meteo_errors.uniq!
+        meteo_errors = meteo_errors.first(5)
       end
     end
 
@@ -96,12 +89,10 @@ class Api::ConstellationController < ActionController::API
     balloons = base.map { |e| (extra = enriched_map[e[:id]]) ? e.merge(extra) : e }
     t3 = mono
 
-    # Insights
-    fastest  = balloons.sort_by { |e| -(e.dig(:drift, :speedKmh) || 0.0) }.first(5)
-    best_tail_candidates = balloons.select { |e| e[:comp].is_a?(Hash) }
-    best_tail = best_tail_candidates
-                  .sort_by { |e| -(e.dig(:comp, :tailwind) || 0.0) }
-                  .first(5) || []
+    fastest   = balloons.sort_by { |e| -(e.dig(:drift, :speedKmh) || 0.0) }.first(5)
+    best_tail = balloons.select { |e| e[:comp].is_a?(Hash) }
+                        .sort_by { |e| -(e.dig(:comp, :tailwind) || 0.0) }
+                        .first(5) || []
 
     payload = {
       updatedAt: Time.now.utc.iso8601,
