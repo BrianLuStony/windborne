@@ -8,9 +8,14 @@
 #   # Defines the root path route ("/")
 #   # root "posts#index"
 # end
-# config/routes.rb
 Rails.application.routes.draw do
-  get "/healthz", to: proc { [200, { "Content-Type" => "text/plain" }, ["ok"]] }
+  match "/healthz", to: proc { [200, {"Content-Type"=>"text/plain"}, ["ok"]] }, via: [:get, :head]
+  get "/", to: proc {
+    body = { name: "WindBorne API",
+             endpoints: ["/api/constellation?no_meteo=1", "/api/constellation?meteo_cap=40"],
+             status: "ok" }.to_json
+    [200, {"Content-Type"=>"application/json"}, [body]]
+  }
   namespace :api, defaults: { format: :json } do
     get "constellation", to: "constellation#index"
   end
