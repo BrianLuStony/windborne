@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -9,11 +9,33 @@ import {
 } from "react-leaflet";
 import { defaultIcon } from "./leaflet.setup";
 
+// Types to avoid 'any'
+type TrailPoint = { lat: number; lon: number; t: number };
+type Drift = { speedKmh: number; headingDeg: number };
+type Meteo = { windspeed: number; winddirection: number };
+type Comp = { tailwind: number; crosswind: number; deltaDeg: number };
+type Balloon = {
+  id: string;
+  last: TrailPoint;
+  drift: Drift;
+  meteo?: Meteo | null;
+  comp?: Comp | null;
+  trail: TrailPoint[];
+};
+type ApiData = {
+  updatedAt: string;
+  count: number;
+  balloons: Balloon[];
+  insights: { fastest: Balloon[]; bestTail?: Balloon[] | null };
+  info?: { meteo_enabled?: boolean; meteoEnabled?: boolean };
+};
+
 function App() {
-  const [data, setData] = useState<any>();
+  const [data, setData] = useState<ApiData | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true); // <— NEW
-  const firstLoadDone = useRef(false); // avoid flicker on interval refreshes
+  const [loading, setLoading] = useState(true);
+  const firstLoadDone = useRef(false);
+
   const center = useMemo<[number, number]>(() => [20, 0], []);
 
   const base = import.meta.env.VITE_API_BASE;
@@ -22,9 +44,13 @@ function App() {
 
   async function load() {
     try {
-      if (!firstLoadDone.current) setLoading(true); // only show banner on first load
+      if (!firstLoadDone.current) setLoading(true);
       const res = await fetch(url, { cache: "no-store" });
-      const json = await res.json();
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`HTTP ${res.status} — ${txt.slice(0, 160)}`);
+      }
+      const json = (await res.json()) as ApiData;
       setData(json);
       setErr(null);
     } catch (e: any) {
@@ -40,6 +66,12 @@ function App() {
     const id = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Determine if meteo/tailwind is enabled (backend may send snake_case or camelCase)
+  const meteoEnabled =
+    data?.info?.meteo_enabled ??
+    data?.info?.meteoEnabled ??
+    (data?.insights?.bestTail?.length ?? 0) > 0;
 
   return (
     <div
@@ -72,42 +104,45 @@ function App() {
         <MapContainer center={center} zoom={2} style={{ height: "100vh" }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-          {/* Quick visual fallback: draw a few points even if markers had issues before */}
+          {/* Quick visual fallback dots so you see *something* even if markers hiccup */}
           {(data?.balloons ?? [])
             .slice(0, 3)
-            .flatMap((b: any) =>
+            .flatMap((b) =>
               (b.trail ?? [])
                 .slice(0, 50)
-                .map((p: any, i: number) => (
+                .map((p, i) => (
                   <CircleMarker
-                    key={`${b.id}-${i}`}
-                    center={[p.lat, p.lon] as [number, number]}
+                    key={`${b.id}-dot-${i}`}
+                    center={[p.lat, p.lon]}
                     radius={2}
                   />
                 ))
             )}
 
-          {data?.balloons?.map((b: any) => {
+          {data?.balloons?.map((b) => {
+            if (!b?.trail?.length) return null;
             const trail = b.trail.map(
-              (p: any) => [p.lat, p.lon] as [number, number]
+              (p) => [p.lat, p.lon] as [number, number]
             );
-            const last = [b.last.lat, b.last.lon] as [number, number];
+            const last: [number, number] = [b.last.lat, b.last.lon];
             return (
               <div key={b.id}>
                 <Polyline positions={trail} />
                 <Marker position={last} icon={defaultIcon}>
                   <Popup>
-                    <div style={{ fontSize: 12 }}>
+                    <div style={{ fontSize: 12, lineHeight: 1.3 }}>
                       <b>{b.id}</b>
                       <br />
                       Updated: {new Date(b.last.t).toLocaleString()}
                       <br />
                       Drift: {b.drift.speedKmh.toFixed(1)} km/h @{" "}
-                      {b.drift.headingDeg.toFixed(0)}°<br />
-                      {b.meteo ? (
+                      {b.drift.headingDeg.toFixed(0)}°
+                      <br />
+                      {b.meteo && b.comp ? (
                         <>
                           Wind: {b.meteo.windspeed.toFixed(1)} km/h @{" "}
-                          {b.meteo.winddirection.toFixed(0)}°<br />
+                          {b.meteo.winddirection.toFixed(0)}°
+                          <br />
                           Tail: {b.comp.tailwind.toFixed(1)} km/h · Cross:{" "}
                           {b.comp.crosswind.toFixed(1)} km/h · Δ{" "}
                           {b.comp.deltaDeg.toFixed(0)}°
@@ -125,10 +160,12 @@ function App() {
       </div>
 
       <aside style={{ padding: 16 }}>
-        <h1>WindBorne · 24h</h1>
-        {err && <p style={{ color: "crimson" }}>{err}</p>}
+        <h1 style={{ marginTop: 0 }}>WindBorne · 24h</h1>
 
-        {/* Sidebar loading hint */}
+        {err && (
+          <p style={{ color: "crimson", whiteSpace: "pre-wrap" }}>{err}</p>
+        )}
+
         {loading && (
           <div style={{ margin: "8px 0" }}>
             Fetching latest data… this may take a few seconds.
@@ -137,35 +174,71 @@ function App() {
 
         {data && (
           <>
-            <div>
-              Last update: {new Date(data.updatedAt).toLocaleString()} ·
-              Balloons: {data.count}
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+              <div>
+                Last update: {new Date(data.updatedAt).toLocaleString()} ·
+                &nbsp;Balloons: {data.count}
+              </div>
+              <span
+                title={
+                  meteoEnabled
+                    ? "Meteo enrichment enabled"
+                    : "Tailwind insights disabled for this demo"
+                }
+                style={{
+                  padding: "2px 6px",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  background: meteoEnabled ? "#e6ffed" : "#f5f5f5",
+                  border: `1px solid ${meteoEnabled ? "#b7eb8f" : "#ddd"}`,
+                  color: "#333",
+                  marginLeft: 6,
+                }}
+              >
+                Meteo: {meteoEnabled ? "on" : "off"}
+              </span>
             </div>
+
             <section>
               <h3>Fastest</h3>
               <ul>
-                {data.insights.fastest.map((b: any) => (
+                {(data.insights.fastest ?? []).map((b) => (
                   <li key={b.id}>
                     {b.id}: {b.drift.speedKmh.toFixed(1)} km/h
                   </li>
                 ))}
+                {(!data.insights.fastest ||
+                  data.insights.fastest.length === 0) && <li>—</li>}
               </ul>
             </section>
-            <section>
-              <h3>Best Tailwind</h3>
-              <ul>
-                {(data.insights.bestTail ?? []).map((b: any) => (
-                  <li key={b.id}>
-                    {b.id}: tail {b.comp.tailwind.toFixed(1)} km/h, Δ{" "}
-                    {b.comp.deltaDeg.toFixed(0)}°
-                  </li>
-                ))}
-                {(!data.insights.bestTail ||
-                  data.insights.bestTail.length === 0) && (
-                  <li>Tailwind insights will appear shortly.</li>
-                )}
-              </ul>
-            </section>
+
+            {/* Only show Best Tailwind if meteo is on */}
+            {meteoEnabled && (
+              <section>
+                <h3>Best Tailwind</h3>
+                <ul>
+                  {(data.insights.bestTail ?? []).map((b) => (
+                    <li key={b.id}>
+                      {b.id}: tail {b.comp!.tailwind.toFixed(1)} km/h, Δ{" "}
+                      {b.comp!.deltaDeg.toFixed(0)}°
+                    </li>
+                  ))}
+                  {(!data.insights.bestTail ||
+                    data.insights.bestTail.length === 0) && (
+                    <li>Tailwind insights will appear shortly.</li>
+                  )}
+                </ul>
+              </section>
+            )}
+
+            {/* If meteo is off, give a tiny hint how to enable for reviewers */}
+            {!meteoEnabled && (
+              <small style={{ opacity: 0.7 }}>
+                Tailwind insights disabled for this demo. Append{" "}
+                <code>?no_meteo=0</code> to the API URL and redeploy with meteo
+                enabled to see them.
+              </small>
+            )}
           </>
         )}
       </aside>
